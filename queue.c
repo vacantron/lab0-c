@@ -118,8 +118,12 @@ element_t *q_remove_head(struct list_head *head, char *sp, size_t bufsize)
         return NULL;
 
     struct list_head *curr = head->next;
-    list_del(curr);
+    list_del_init(curr);
     element_t *el = container_of(curr, element_t, list);
+    if (sp) {
+        strncpy(sp, el->value, bufsize - 1);
+        sp[bufsize - 1] = '\0';
+    }
     return el;
 }
 
@@ -135,8 +139,12 @@ element_t *q_remove_tail(struct list_head *head, char *sp, size_t bufsize)
         return NULL;
 
     struct list_head *curr = head->prev;
-    list_del(curr);
+    list_del_init(curr);
     element_t *el = container_of(curr, element_t, list);
+    if (sp) {
+        strncpy(sp, el->value, bufsize - 1);
+        sp[bufsize - 1] = '\0';
+    }
     return el;
 }
 
@@ -205,19 +213,24 @@ bool q_delete_mid(struct list_head *head)
  */
 bool q_delete_dup(struct list_head *head)
 {
-    struct list_head *curr = head->next;
-    while (curr != head) {
-        char *str = container_of(curr, element_t, list)->value;
-        bool is_dup = false;
-        for (size_t i = 0; i < strlen(str) - 1; i++) {
-            if (str[i] == str[i + 1]) {
-                is_dup = true;
-                break;
-            }
-        }
-        curr = curr->next;
-        if (is_dup) {
-            list_del(curr->prev);
+    if (!head)
+        return NULL;
+    if (list_empty(head))
+        return NULL;
+
+    element_t *s = list_entry(head->next, element_t, list);
+    element_t *t = list_entry(head->next->next, element_t, list);
+    while (&t->list != head) {
+        size_t len = strlen(s->value) > strlen(t->value) ? strlen(t->value)
+                                                         : strlen(s->value);
+        if (strncmp(s->value, t->value, len + 1) == 0) {
+            element_t *tmp = t;
+            t = list_entry((&t->list)->next, element_t, list);
+            list_del(&tmp->list);
+            q_release_element(tmp);
+        } else {
+            s = t;
+            t = list_entry((&t->list)->next, element_t, list);
         }
     }
     return true;
@@ -229,6 +242,7 @@ bool q_delete_dup(struct list_head *head)
 void q_swap(struct list_head *head)
 {
     int n = q_size(head) >> 1;
+    bool is_odd = q_size(head) % 2;
     struct list_head *prev = head, *curr = head->next;
     for (size_t i = 0; i < n; i++) {
         struct list_head *next = curr->next, *tmp;
@@ -240,8 +254,13 @@ void q_swap(struct list_head *head)
         prev = curr;
         curr = tmp;
     }
-    prev->next = head;
-    head->prev = prev;
+    if (is_odd) {
+        prev->next = head->prev;
+        head->prev->prev = prev;
+    } else {
+        prev->next = head;
+        head->prev = prev;
+    }
 }
 
 /*
@@ -270,6 +289,7 @@ void q_reverse(struct list_head *head)
     head->next = curr;
 }
 
+void swap(element_t *, element_t *);
 /*
  * Sort elements of queue in ascending order
  * No effect if q is NULL or empty. In addition, if q has only one
@@ -281,4 +301,38 @@ void q_sort(struct list_head *head)
         return;
     if (list_empty(head))
         return;
+
+    bool is_swapped = false;
+    int displacement = q_size(head) - 1;
+    do {
+        is_swapped = false;
+        element_t *s = list_entry(head->next, element_t, list);
+        element_t *t = list_entry(head->next->next, element_t, list);
+
+        for (size_t i = 0; i < displacement; i++) {
+            size_t len = strlen(s->value) > strlen(t->value) ? strlen(t->value)
+                                                             : strlen(s->value);
+            if (strncmp(s->value, t->value, ++len) > 0) {
+                swap(s, t);
+                is_swapped = true;
+            }
+            s = t;
+            t = list_entry((&s->list)->next, element_t, list);
+        }
+        if (!is_swapped)
+            --displacement;
+    } while (is_swapped);
+}
+
+void swap(element_t *s, element_t *t)
+{
+    struct list_head *prev = (&s->list)->prev;
+    struct list_head *next = (&t->list)->next;
+    (&s->list)->prev = &t->list;
+    (&s->list)->next = next;
+    (&t->list)->prev = prev;
+    (&t->list)->next = &s->list;
+
+    prev->next = &t->list;
+    next->prev = &s->list;
 }
