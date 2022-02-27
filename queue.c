@@ -34,7 +34,7 @@ void q_free(struct list_head *l)
     while (!list_empty(l)) {
         struct list_head *curr = l->next;
         list_del(curr);
-        q_release_element(container_of(curr, element_t, list));
+        q_release_element(list_entry(curr, element_t, list));
     }
     list_del(l);
     free(l);
@@ -112,14 +112,12 @@ bool q_insert_tail(struct list_head *head, char *s)
  */
 element_t *q_remove_head(struct list_head *head, char *sp, size_t bufsize)
 {
-    if (!head)
-        return NULL;
-    if (list_empty(head))
+    if (!head || list_empty(head))
         return NULL;
 
     struct list_head *curr = head->next;
     list_del_init(curr);
-    element_t *el = container_of(curr, element_t, list);
+    element_t *el = list_entry(curr, element_t, list);
     if (sp) {
         strncpy(sp, el->value, bufsize - 1);
         sp[bufsize - 1] = '\0';
@@ -133,14 +131,12 @@ element_t *q_remove_head(struct list_head *head, char *sp, size_t bufsize)
  */
 element_t *q_remove_tail(struct list_head *head, char *sp, size_t bufsize)
 {
-    if (!head)
-        return NULL;
-    if (list_empty(head))
+    if (!head || list_empty(head))
         return NULL;
 
     struct list_head *curr = head->prev;
     list_del_init(curr);
-    element_t *el = container_of(curr, element_t, list);
+    element_t *el = list_entry(curr, element_t, list);
     if (sp) {
         strncpy(sp, el->value, bufsize - 1);
         sp[bufsize - 1] = '\0';
@@ -164,9 +160,7 @@ void q_release_element(element_t *e)
  */
 int q_size(struct list_head *head)
 {
-    if (!head)
-        return 0;
-    if (list_empty(head))
+    if (!head || list_empty(head))
         return 0;
 
     int cnt = 0;
@@ -197,9 +191,7 @@ int pseudo_size(struct list_head *pseudo_head)
  */
 bool q_delete_mid(struct list_head *head)
 {
-    if (!head)
-        return NULL;
-    if (list_empty(head))
+    if (!head || list_empty(head))
         return NULL;
 
     int n = q_size(head) >> 1;
@@ -208,7 +200,7 @@ bool q_delete_mid(struct list_head *head)
         curr = curr->next;
     }
     list_del(curr);
-    q_release_element(container_of(curr, element_t, list));
+    q_release_element(list_entry(curr, element_t, list));
     return true;
 }
 
@@ -223,9 +215,7 @@ bool q_delete_mid(struct list_head *head)
  */
 bool q_delete_dup(struct list_head *head)
 {
-    if (!head)
-        return NULL;
-    if (list_empty(head))
+    if (!head || list_empty(head))
         return NULL;
 
     element_t *s = list_entry(head->next, element_t, list);
@@ -233,14 +223,14 @@ bool q_delete_dup(struct list_head *head)
     while (&t->list != head) {
         size_t len = strlen(s->value) > strlen(t->value) ? strlen(t->value)
                                                          : strlen(s->value);
-        if (strncmp(s->value, t->value, len + 1) == 0) {
-            element_t *tmp = t;
-            t = list_entry((&t->list)->next, element_t, list);
-            list_del(&tmp->list);
-            q_release_element(tmp);
+        if (strncmp(s->value, t->value, ++len) == 0) {
+            element_t *next = list_entry(t->list.next, element_t, list);
+            list_del(&t->list);
+            q_release_element(t);
+            t = next;
         } else {
             s = t;
-            t = list_entry((&t->list)->next, element_t, list);
+            t = list_entry(t->list.next, element_t, list);
         }
     }
     return true;
@@ -251,25 +241,13 @@ bool q_delete_dup(struct list_head *head)
  */
 void q_swap(struct list_head *head)
 {
-    int n = q_size(head) >> 1;
-    bool is_odd = q_size(head) % 2;
-    struct list_head *prev = head, *curr = head->next;
-    for (size_t i = 0; i < n; i++) {
-        struct list_head *next = curr->next, *tmp;
-        prev->next = next;
-        tmp = next->next;
-        next->prev = prev;
-        next->next = curr;
-        curr->prev = next;
-        prev = curr;
-        curr = tmp;
-    }
-    if (is_odd) {
-        prev->next = head->prev;
-        head->prev->prev = prev;
-    } else {
-        prev->next = head;
-        head->prev = prev;
+    struct list_head *node, *safe;
+    list_for_each_safe (node, safe, head) {
+        if (node->next == head)
+            continue;
+        list_del(node);
+        list_add(node, safe);
+        safe = node->next;
     }
 }
 
@@ -282,21 +260,17 @@ void q_swap(struct list_head *head)
  */
 void q_reverse(struct list_head *head)
 {
-    if (!head)
-        return;
-    if (list_empty(head))
+    if (!head || list_empty(head))
         return;
 
-    struct list_head *curr = head, *tmp = head->next;
-    while (tmp != head) {
-        struct list_head *next = tmp;
-        curr->prev = next;
-        tmp = next->next;
-        next->next = curr;
-        curr = next;
+    struct list_head *node, *safe;
+    list_for_each_safe (node, safe, head) {
+        node->next = node->prev;
+        node->prev = safe;
     }
-    curr->prev = head;
-    head->next = curr;
+    node = head->prev;
+    head->prev = head->next;
+    head->next = node;
 }
 
 struct list_head *merge_sort(struct list_head *);
