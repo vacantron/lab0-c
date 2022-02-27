@@ -178,6 +178,16 @@ int q_size(struct list_head *head)
     return cnt;
 }
 
+int pseudo_size(struct list_head *pseudo_head)
+{
+    int cnt = 1;
+    struct list_head *curr = pseudo_head->next;
+    while (curr != pseudo_head) {
+        ++cnt;
+        curr = curr->next;
+    }
+    return cnt;
+}
 /*
  * Delete the middle node in list.
  * The middle node of a linked list of size n is the
@@ -289,7 +299,8 @@ void q_reverse(struct list_head *head)
     head->next = curr;
 }
 
-void swap(element_t *, element_t *);
+struct list_head *merge_sort(struct list_head *);
+struct list_head *merge(struct list_head *, struct list_head *);
 /*
  * Sort elements of queue in ascending order
  * No effect if q is NULL or empty. In addition, if q has only one
@@ -297,42 +308,71 @@ void swap(element_t *, element_t *);
  */
 void q_sort(struct list_head *head)
 {
-    if (!head)
-        return;
-    if (list_empty(head))
+    if (!head || list_empty(head))
         return;
 
-    bool is_swapped = false;
-    int displacement = q_size(head) - 1;
-    do {
-        is_swapped = false;
-        element_t *s = list_entry(head->next, element_t, list);
-        element_t *t = list_entry(head->next->next, element_t, list);
-
-        for (size_t i = 0; i < displacement; i++) {
-            size_t len = strlen(s->value) > strlen(t->value) ? strlen(t->value)
-                                                             : strlen(s->value);
-            if (strncmp(s->value, t->value, ++len) > 0) {
-                swap(s, t);
-                is_swapped = true;
-            }
-            s = t;
-            t = list_entry((&s->list)->next, element_t, list);
-        }
-        if (!is_swapped)
-            --displacement;
-    } while (is_swapped);
+    list_del(head);
+    struct list_head *pseudo_head = merge_sort(head->next);
+    pseudo_head->prev->next = head;
+    head->prev = pseudo_head->prev;
+    pseudo_head->prev = head;
+    head->next = pseudo_head;
 }
 
-void swap(element_t *s, element_t *t)
+struct list_head *merge_sort(struct list_head *head)
 {
-    struct list_head *prev = (&s->list)->prev;
-    struct list_head *next = (&t->list)->next;
-    (&s->list)->prev = &t->list;
-    (&s->list)->next = next;
-    (&t->list)->prev = prev;
-    (&t->list)->next = &s->list;
+    size_t len = pseudo_size(head);
+    if (len == 1)
+        return head;
 
-    prev->next = &t->list;
-    next->prev = &s->list;
+    len = len >> 1;
+    struct list_head *lhs = head, *rhs = head;
+    for (size_t i = 0; i < len; i++) {
+        rhs = rhs->next;
+    }
+
+    struct list_head *tail = head->prev;
+    lhs->prev = rhs->prev;
+    lhs->prev->next = lhs;
+    rhs->prev = tail;
+    rhs->prev->next = rhs;
+
+    return merge(merge_sort(lhs), merge_sort(rhs));
+}
+
+struct list_head *merge(struct list_head *l, struct list_head *r)
+{
+    struct list_head *iterator = l, *curr = r;
+    for (; iterator; curr = curr->next) {
+        char *l_char = list_entry(l, element_t, list)->value;
+        char *curr_char = list_entry(curr, element_t, list)->value;
+        size_t len = strlen(l_char) > strlen(curr_char) ? strlen(curr_char)
+                                                        : strlen(l_char);
+        if (strncmp(l_char, curr_char, ++len) <= 0) {
+            l->next->prev = l->prev;
+            l->prev->next = l->next;
+            iterator = l->next;
+            if (iterator == l)
+                iterator = NULL;
+
+            curr->prev->next = l;
+            l->prev = curr->prev;
+            curr->prev = l;
+            l->next = curr;
+
+            if (curr == r)
+                r = l;
+
+            curr = curr->prev;
+            l = iterator;
+        } else if (curr == r->prev) {
+            struct list_head *tail = iterator->prev;
+            iterator->prev = r->prev;
+            r->prev->next = iterator;
+            r->prev = tail;
+            tail->next = r;
+            return r;
+        }
+    }
+    return r;
 }
