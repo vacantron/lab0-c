@@ -136,6 +136,49 @@ static bool do_new(int argc, char *argv[])
 }
 
 /*
+ * Shuffle elements of queue with Fisher-Yates algorithm.
+ * No effect if q is NULL or empty. In addition, if q has only one
+ * element, do nothing.
+ */
+void q_shuffle(struct list_head *head)
+{
+    if (!head || list_empty(head))
+        return;
+
+    size_t len = q_size(head), idx = 0;
+    for (size_t i = 0; i < len - 1; i++, idx++) {
+        long location = random() % (len - idx);
+        struct list_head *node = head->next;
+        for (size_t j = 0; j < location; j++) {
+            node = node->next;
+        }
+        list_del(node);
+        list_add_tail(node, head);
+    }
+}
+
+static bool do_shuffle(int argc, char *argv[])
+{
+    if (argc != 1) {
+        report(1, "%s takes no arguments", argv[0]);
+        return false;
+    }
+
+    if (!l_meta.l)
+        report(3, "Warning: Calling insert head on null queue");
+    error_check();
+
+    if (exception_setup(true))
+        q_shuffle(l_meta.l);
+
+    exception_cancel();
+
+    show_queue(3);
+
+    return !error_check();
+}
+
+/*
  * TODO: Add a buf_size check of if the buf_size may be less
  * than MIN_RANDSTR_LEN.
  */
@@ -766,6 +809,9 @@ static void console_init()
 {
     ADD_COMMAND(new, "                | Create new queue");
     ADD_COMMAND(free, "                | Delete queue");
+    ADD_COMMAND(shuffle,
+                "                | Shuffle all queue elements with "
+                "Fisher-Yates shuffle algorithm");
     ADD_COMMAND(
         ih,
         " str [n]        | Insert string str at head of queue n times. "
