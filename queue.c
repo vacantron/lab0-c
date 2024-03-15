@@ -48,13 +48,16 @@ bool q_insert_head(struct list_head *head, char *s)
     if (!el)
         return false;
 
-    el->value = (char *) malloc(sizeof(char) * (strlen(s) + 1));
+    size_t len = strlen(s);
+    el->value = (char *) malloc(sizeof(char) * (len + 1));
     if (!el->value) {
         free(el);
         return false;
     }
 
-    strncpy(el->value, s, strlen(s));
+    /* null-terminated */
+    strncpy(el->value, s, len);
+    el->value[len] = 0;
     list_add(&el->list, head);
     return true;
 }
@@ -69,13 +72,16 @@ bool q_insert_tail(struct list_head *head, char *s)
     if (!el)
         return false;
 
-    el->value = (char *) malloc(sizeof(char) * (strlen(s) + 1));
+    size_t len = strlen(s);
+    el->value = (char *) malloc(sizeof(char) * (len + 1));
     if (!el->value) {
         free(el);
         return false;
     }
 
+    /* null-ternimated */
     strncpy(el->value, s, strlen(s));
+    el->value[len] = 0;
     list_add_tail(&el->list, head);
     return true;
 }
@@ -151,6 +157,28 @@ bool q_delete_mid(struct list_head *head)
 bool q_delete_dup(struct list_head *head)
 {
     // https://leetcode.com/problems/remove-duplicates-from-sorted-list-ii/
+    if (!head || list_empty(head))
+        return false;
+
+    q_sort(head, 0);
+
+    bool is_dup = false;
+    element_t *iter, *safe;
+    list_for_each_entry_safe (iter, safe, head, list) {
+        if (&safe->list != head && !strcmp(iter->value, safe->value)) {
+            list_del_init(&iter->list);
+            q_release_element(iter);
+            is_dup = true;
+            continue;
+        }
+
+        if (is_dup) {
+            list_del_init(&iter->list);
+            q_release_element(iter);
+            is_dup = false;
+        }
+    }
+
     return true;
 }
 
@@ -158,6 +186,25 @@ bool q_delete_dup(struct list_head *head)
 void q_swap(struct list_head *head)
 {
     // https://leetcode.com/problems/swap-nodes-in-pairs/
+    LIST_HEAD(t0);
+    LIST_HEAD(t1);
+
+    size_t cnt = 0;
+    struct list_head *iter, *safe, *_head = &t0, *__head = &t1;
+    list_for_each_safe (iter, safe, head) {
+        list_del_init(iter);
+        list_add(iter, _head);
+
+        if (cnt & 1)
+            list_splice_tail_init(_head, __head);
+
+        cnt++;
+    }
+
+    if (cnt & 1)
+        list_splice_tail_init(_head, __head);
+
+    list_splice_init(__head, head);
 }
 
 /* Reverse elements in queue */
@@ -188,10 +235,81 @@ void q_reverse(struct list_head *head)
 void q_reverseK(struct list_head *head, int k)
 {
     // https://leetcode.com/problems/reverse-nodes-in-k-group/
+    if (!head || list_empty(head))
+        return;
+
+    LIST_HEAD(t0);
+    LIST_HEAD(t1);
+
+    size_t cnt = 0;
+    struct list_head *iter, *safe, *_head = &t0, *__head = &t1;
+    list_for_each_safe (iter, safe, head) {
+        list_del_init(iter);
+        list_add(iter, _head);
+
+        cnt++;
+
+        if (cnt != k)
+            continue;
+
+        cnt = 0;
+        list_splice_tail_init(_head, __head);
+    }
+
+    if (cnt)
+        list_splice_tail_init(_head, __head);
+
+    list_splice_init(__head, head);
 }
 
 /* Sort elements of queue in ascending/descending order */
-void q_sort(struct list_head *head, bool descend) {}
+void q_sort(struct list_head *head, bool descend)
+{
+    if (!head || list_empty(head))
+        return;
+
+    LIST_HEAD(t0);
+    LIST_HEAD(t1);
+
+    struct list_head *_head = &t0, *__head = &t1;
+    element_t *iter, *safe;
+
+    list_cut_position(_head, head, head->next);
+
+    list_for_each_entry_safe (iter, safe, head, list) {
+        bool done = false;
+        element_t *_iter;
+
+        list_for_each_entry (_iter, _head, list) {
+            if (descend) {
+                if (strcmp(iter->value, _iter->value) > 0) {
+                    list_del_init(&iter->list);
+                    list_cut_position(__head, _head, _iter->list.prev);
+                    list_add_tail(&iter->list, __head);
+                    list_splice_init(__head, _head);
+                    done = true;
+                    break;
+                }
+            } else {
+                if (strcmp(iter->value, _iter->value) < 0) {
+                    list_del_init(&iter->list);
+                    list_cut_position(__head, _head, _iter->list.prev);
+                    list_add_tail(&iter->list, __head);
+                    list_splice_init(__head, _head);
+                    done = true;
+                    break;
+                }
+            }
+        }
+
+        if (!done) {
+            list_del_init(&iter->list);
+            list_add_tail(&iter->list, _head);
+        }
+    }
+
+    list_splice_init(_head, head);
+}
 
 /* Remove every node which has a node with a strictly less value anywhere to
  * the right side of it */
@@ -203,10 +321,18 @@ int q_ascend(struct list_head *head)
 
     element_t *iter, *safe;
     list_for_each_entry_safe (iter, safe, head, list) {
-        if (strcmp(iter->value, safe->value) < 0)
-            continue;
+        if (&safe->list == head)
+            break;
 
-        list_del_init(&iter->list);
+        for (element_t *_iter = safe; &_iter->list != head;
+             _iter = container_of(_iter->list.next, element_t, list)) {
+            if (strcmp(iter->value, _iter->value) >= 0) {
+                list_del_init(&iter->list);
+                q_release_element(iter);
+                goto iter_end;
+            }
+        }
+    iter_end:;
     }
 
     return q_size(head);
@@ -222,10 +348,18 @@ int q_descend(struct list_head *head)
 
     element_t *iter, *safe;
     list_for_each_entry_safe (iter, safe, head, list) {
-        if (strcmp(iter->value, safe->value) > 0)
-            continue;
+        if (&safe->list == head)
+            break;
 
-        list_del_init(&iter->list);
+        for (element_t *_iter = safe; &_iter->list != head;
+             _iter = container_of(_iter->list.next, element_t, list)) {
+            if (strcmp(iter->value, _iter->value) <= 0) {
+                list_del_init(&iter->list);
+                q_release_element(iter);
+                goto iter_end;
+            }
+        }
+    iter_end:;
     }
 
     return q_size(head);
